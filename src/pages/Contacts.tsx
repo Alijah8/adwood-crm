@@ -8,11 +8,13 @@ import { Avatar, AvatarFallback } from '../components/ui/avatar'
 import { useCRMStore } from '../store'
 import { formatDate, getInitials } from '../lib/utils'
 import type { Contact } from '../types'
+import { CSVImportModal } from '../components/CSVImportModal'
 import {
   Search,
   Mail,
   Building2,
   X,
+  Upload,
 } from 'lucide-react'
 
 const statusColors = {
@@ -36,6 +38,7 @@ export function Contacts() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showForm, setShowForm] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [editingContact, setEditingContact] = useState<Contact | null>(null)
   const [formData, setFormData] = useState({
     firstName: '',
@@ -143,6 +146,10 @@ export function Contacts() {
               </Button>
             ))}
           </div>
+          <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
+            <Upload className="w-4 h-4 mr-2" />
+            Import CSV
+          </Button>
         </div>
 
         {/* Contacts Table */}
@@ -242,6 +249,14 @@ export function Contacts() {
           </CardContent>
         </Card>
       </div>
+
+      {/* CSV Import Modal */}
+      {showImport && (
+        <CSVImportModal
+          onClose={() => setShowImport(false)}
+          onImported={() => {}}
+        />
+      )}
 
       {/* Add/Edit Form Modal */}
       {showForm && (
