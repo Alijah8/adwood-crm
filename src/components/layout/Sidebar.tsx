@@ -1,6 +1,8 @@
 import { Link, useLocation } from 'react-router-dom'
 import { cn } from '../../lib/utils'
 import { useCRMStore } from '../../store'
+import { useAuth } from '../../hooks/useAuth'
+import { hasRouteAccess } from '../../types/auth'
 import { Button } from '../ui/button'
 import {
   LayoutDashboard,
@@ -35,6 +37,13 @@ const navigation = [
 export function Sidebar() {
   const location = useLocation()
   const { sidebarOpen, toggleSidebar, darkMode, toggleDarkMode } = useCRMStore()
+  const { profile } = useAuth()
+
+  // Filter navigation items based on user role
+  const visibleNavigation = navigation.filter(item => {
+    if (!profile?.role) return false
+    return hasRouteAccess(profile.role, item.href)
+  })
 
   return (
     <div
@@ -61,7 +70,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-        {navigation.map((item) => {
+        {visibleNavigation.map((item) => {
           const isActive = location.pathname === item.href
           return (
             <Link

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Avatar, AvatarFallback } from '../components/ui/avatar'
 import { useCRMStore } from '../store'
+import { useAuth } from '../hooks/useAuth'
 import { formatCurrency, formatRelativeTime, getInitials } from '../lib/utils'
 import {
   Users,
@@ -45,6 +46,8 @@ const dealsData = [
 
 export function Dashboard() {
   const { contacts, deals, tasks, events, payments } = useCRMStore()
+  const { profile } = useAuth()
+  const firstName = profile?.name?.split(' ')[0] || 'there'
 
   const metrics = useMemo(() => {
     const now = new Date()
@@ -107,7 +110,7 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Dashboard" subtitle="Welcome back, Alijah" />
+      <Header title="Dashboard" subtitle={`Welcome back, ${firstName}`} />
 
       <div className="flex-1 p-6 space-y-6 overflow-auto">
         {/* Metrics Grid */}
