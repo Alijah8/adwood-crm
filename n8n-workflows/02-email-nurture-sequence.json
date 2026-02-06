@@ -1,0 +1,157 @@
+{
+  "name": "Email Nurture Sequence (3-Email Drip)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "start-nurture",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Start Nurture Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.GMAIL_FROM_EMAIL }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Quick Question for You",
+        "html": "<p>Hi {{ $json.firstName }},</p>\n<p>I wanted to follow up and see if you had any questions about our services.</p>\n<p>What's the biggest challenge you're facing right now in your business?</p>\n<p>Reply and let me know - I'd love to help.</p>\n<p>Best,<br>Alijah</p>"
+      },
+      "id": "email-1",
+      "name": "Email 1 - Day 0",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "days"
+      },
+      "id": "wait-1",
+      "name": "Wait 2 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.GMAIL_FROM_EMAIL }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Here's How We Can Help",
+        "html": "<p>Hi {{ $json.firstName }},</p>\n<p>I know you're busy, so I'll keep this short.</p>\n<p>At Adwood Consulting, we specialize in helping businesses like yours:</p>\n<ul>\n<li>Automate repetitive tasks</li>\n<li>Streamline client management</li>\n<li>Build systems that scale</li>\n</ul>\n<p>Would you be open to a quick 15-minute call this week?</p>\n<p><a href='YOUR_CALENDAR_LINK'>Book a time here</a></p>\n<p>Best,<br>Alijah</p>"
+      },
+      "id": "email-2",
+      "name": "Email 2 - Day 2",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [850, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "days"
+      },
+      "id": "wait-2",
+      "name": "Wait 3 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.GMAIL_FROM_EMAIL }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Last Chance: Free Strategy Call",
+        "html": "<p>Hi {{ $json.firstName }},</p>\n<p>This is my final follow-up.</p>\n<p>I don't want to be pushy, but I genuinely believe we could help you achieve your business goals faster.</p>\n<p>If now isn't the right time, no worries at all. But if you're ready to take action:</p>\n<p><strong><a href='YOUR_CALENDAR_LINK'>Schedule your free strategy call →</a></strong></p>\n<p>Looking forward to connecting!</p>\n<p>Best,<br>Alijah</p>"
+      },
+      "id": "email-3",
+      "name": "Email 3 - Day 5",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1250, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Start Nurture Webhook": {
+      "main": [
+        [
+          {
+            "node": "Email 1 - Day 0",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email 1 - Day 0": {
+      "main": [
+        [
+          {
+            "node": "Wait 2 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2 Days": {
+      "main": [
+        [
+          {
+            "node": "Email 2 - Day 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email 2 - Day 2": {
+      "main": [
+        [
+          {
+            "node": "Wait 3 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3 Days": {
+      "main": [
+        [
+          {
+            "node": "Email 3 - Day 5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

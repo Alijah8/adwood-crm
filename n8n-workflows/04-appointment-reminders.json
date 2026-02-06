@@ -1,0 +1,145 @@
+{
+  "name": "Daily Appointment Reminders",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-1",
+      "name": "Every Morning at 8 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "primary"
+        },
+        "returnAll": true,
+        "options": {
+          "timeMin": "={{ DateTime.now().toISO() }}",
+          "timeMax": "={{ DateTime.now().plus({ hours: 24 }).toISO() }}"
+        }
+      },
+      "id": "calendar-1",
+      "name": "Get Today's Events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "YOUR_GOOGLE_CALENDAR_CREDENTIAL_ID",
+          "name": "Google Calendar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.attendees }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "Has Attendees?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const event = $input.item.json;\nconst attendeeEmail = event.attendees?.[0]?.email || '';\n\nreturn {\n  json: {\n    email: attendeeEmail,\n    eventTitle: event.summary || 'Your Appointment',\n    startTime: event.start?.dateTime || event.start?.date,\n    meetLink: event.hangoutLink || ''\n  }\n};"
+      },
+      "id": "code-1",
+      "name": "Format Reminder Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.GMAIL_FROM_EMAIL }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Reminder: {{ $json.eventTitle }} Today!",
+        "html": "<p>Hi there,</p>\n<p>This is a friendly reminder about your appointment today:</p>\n<p><strong>{{ $json.eventTitle }}</strong><br>\n<strong>Time:</strong> {{ $json.startTime }}</p>\n{{ $json.meetLink ? '<p><a href=\"' + $json.meetLink + '\">Join Meeting</a></p>' : '' }}\n<p>Looking forward to connecting!</p>\n<p>Best,<br>Alijah</p>"
+      },
+      "id": "gmail-1",
+      "name": "Send Reminder Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1050, 200],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every Morning at 8 AM": {
+      "main": [
+        [
+          {
+            "node": "Get Today's Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Today's Events": {
+      "main": [
+        [
+          {
+            "node": "Has Attendees?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Attendees?": {
+      "main": [
+        [
+          {
+            "node": "Format Reminder Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Reminder Data": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "name": "Meta Lead Ads → CRM + Email",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "meta-leads",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Meta Lead Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "meta-leads"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract lead data from Meta Lead Ads\nconst leadData = $input.first().json;\n\n// Parse Meta Lead Ads format\nconst fieldMap = {};\nif (leadData.field_data) {\n  leadData.field_data.forEach(field => {\n    fieldMap[field.name] = field.values[0];\n  });\n}\n\n// Create contact object for CRM\nconst contact = {\n  firstName: fieldMap.first_name || fieldMap.full_name?.split(' ')[0] || 'Unknown',\n  lastName: fieldMap.last_name || fieldMap.full_name?.split(' ').slice(1).join(' ') || '',\n  email: fieldMap.email || '',\n  phone: fieldMap.phone_number || fieldMap.phone || '',\n  source: 'meta_ads',\n  status: 'lead',\n  tags: ['meta-lead'],\n  notes: `Lead from Meta Ad Campaign: ${leadData.campaign_name || 'Unknown'}`,\n  createdAt: new Date().toISOString()\n};\n\nreturn { json: contact };"
+      },
+      "id": "code-1",
+      "name": "Parse Lead Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.GMAIL_FROM_EMAIL }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Thanks for Your Interest!",
+        "text": "Hi {{ $json.firstName }},\n\nThank you for reaching out! We've received your information and will be in touch shortly.\n\nIn the meantime, feel free to reply to this email if you have any questions.\n\nBest regards,\nThe Adwood Consulting Team"
+      },
+      "id": "gmail-1",
+      "name": "Send Welcome Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [650, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.GMAIL_FROM_EMAIL }}",
+        "toEmail": "{{ $env.NOTIFY_EMAIL }}",
+        "subject": "New Lead: {{ $json.firstName }} {{ $json.lastName }}",
+        "text": "New lead captured from Meta Ads:\n\nName: {{ $json.firstName }} {{ $json.lastName }}\nEmail: {{ $json.email }}\nPhone: {{ $json.phone }}\n\nLog in to your CRM to view details."
+      },
+      "id": "gmail-2",
+      "name": "Notify Team",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [650, 500],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Meta Lead Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Lead Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Lead Data": {
+      "main": [
+        [
+          {
+            "node": "Send Welcome Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

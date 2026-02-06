@@ -1,0 +1,97 @@
+{
+  "name": "Booking Confirmation & Calendar Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "booking",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Booking Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "resource": "event",
+        "operation": "create",
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "primary"
+        },
+        "start": "={{ $json.appointment_date }}T{{ $json.appointment_time }}:00",
+        "end": "={{ $json.appointment_date }}T{{ DateTime.fromISO($json.appointment_date + 'T' + $json.appointment_time + ':00').plus({ hours: 1 }).toFormat('HH:mm') }}:00",
+        "additionalFields": {
+          "summary": "Meeting with {{ $json.name }}",
+          "description": "Booked via CRM landing page.\n\nContact: {{ $json.email }}\nPhone: {{ $json.phone }}\n\nNotes: {{ $json.message }}",
+          "attendees": [
+            "{{ $json.email }}"
+          ],
+          "conferenceDataVersion": 1,
+          "sendUpdates": "all"
+        }
+      },
+      "id": "calendar-1",
+      "name": "Create Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "YOUR_GOOGLE_CALENDAR_CREDENTIAL_ID",
+          "name": "Google Calendar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.GMAIL_FROM_EMAIL }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Your Appointment is Confirmed! 📅",
+        "html": "<p>Hi {{ $json.name }},</p>\n<p>Your appointment has been confirmed!</p>\n<p><strong>Date:</strong> {{ $json.appointment_date }}<br>\n<strong>Time:</strong> {{ $json.appointment_time }}</p>\n<p>You should receive a calendar invite shortly with the meeting details.</p>\n<p>If you need to reschedule, please reply to this email.</p>\n<p>Looking forward to speaking with you!</p>\n<p>Best,<br>Alijah<br>Adwood Consulting</p>"
+      },
+      "id": "gmail-1",
+      "name": "Send Confirmation Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [650, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Booking Webhook": {
+      "main": [
+        [
+          {
+            "node": "Create Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
