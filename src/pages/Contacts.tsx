@@ -15,6 +15,8 @@ import {
   Building2,
   X,
   Upload,
+  Tag,
+  UserSearch,
 } from 'lucide-react'
 
 const statusColors = {
@@ -33,10 +35,24 @@ const sourceLabels = {
   other: 'Other',
 }
 
+// AI-managed tags that agents can apply to contacts
+const AI_TAGS = [
+  { value: 'missed appointment', label: 'Missed Appt', color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
+  { value: 'long appointment', label: 'Long Appt', color: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200' },
+  { value: 'Batch', label: 'Batch', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' },
+  { value: 'avatar_lead', label: 'Avatar Lead', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' },
+]
+
+// Map tag values to their display colors
+const tagColorMap: Record<string, string> = Object.fromEntries(
+  AI_TAGS.map(t => [t.value, t.color])
+)
+
 export function Contacts() {
   const { contacts, addContact, updateContact, deleteContact } = useCRMStore()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [activeTab, setActiveTab] = useState<'contacts' | 'new_avatar'>('contacts')
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [editingContact, setEditingContact] = useState<Contact | null>(null)
@@ -63,9 +79,19 @@ export function Contacts() {
 
       const matchesStatus = statusFilter === 'all' || contact.status === statusFilter
 
+      // New Avatar tab: show only contacts with 'avatar_lead' tag
+      if (activeTab === 'new_avatar') {
+        return matchesSearch && contact.tags.includes('avatar_lead')
+      }
+
       return matchesSearch && matchesStatus
     })
-  }, [contacts, search, statusFilter])
+  }, [contacts, search, statusFilter, activeTab])
+
+  // Count avatar leads for the tab badge
+  const avatarLeadCount = useMemo(() => {
+    return contacts.filter(c => c.tags.includes('avatar_lead')).length
+  }, [contacts])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -111,6 +137,15 @@ export function Contacts() {
     setShowForm(true)
   }
 
+  const toggleTag = (tagValue: string) => {
+    setFormData(prev => ({
+      ...prev,
+      tags: prev.tags.includes(tagValue)
+        ? prev.tags.filter(t => t !== tagValue)
+        : [...prev.tags, tagValue],
+    }))
+  }
+
   return (
     <div className="flex flex-col h-full">
       <Header
@@ -123,29 +158,61 @@ export function Contacts() {
       />
 
       <div className="flex-1 p-6 space-y-4 overflow-auto">
+        {/* Tab Navigation: Contacts | New Avatar */}
+        <div className="flex gap-1 border-b border-border pb-0">
+          <button
+            onClick={() => { setActiveTab('contacts'); setStatusFilter('all') }}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'contacts'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Contacts
+          </button>
+          <button
+            onClick={() => setActiveTab('new_avatar')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+              activeTab === 'new_avatar'
+                ? 'border-purple-500 text-purple-600 dark:text-purple-400'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <UserSearch className="w-4 h-4" />
+            New Avatar
+            {avatarLeadCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
+                {avatarLeadCount}
+              </span>
+            )}
+          </button>
+        </div>
+
         {/* Filters */}
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[200px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Search contacts..."
+              placeholder={activeTab === 'new_avatar' ? 'Search avatar leads...' : 'Search contacts...'}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
             />
           </div>
-          <div className="flex gap-2">
-            {['all', 'lead', 'prospect', 'customer', 'churned'].map((status) => (
-              <Button
-                key={status}
-                variant={statusFilter === status ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setStatusFilter(status)}
-              >
-                {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
-              </Button>
-            ))}
-          </div>
+          {activeTab === 'contacts' && (
+            <div className="flex gap-2">
+              {['all', 'lead', 'prospect', 'customer', 'churned'].map((status) => (
+                <Button
+                  key={status}
+                  variant={statusFilter === status ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setStatusFilter(status)}
+                >
+                  {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
+                </Button>
+              ))}
+            </div>
+          )}
           <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
             <Upload className="w-4 h-4 mr-2" />
             Import CSV
@@ -162,6 +229,7 @@ export function Contacts() {
                     <th className="text-left p-4 font-medium text-muted-foreground text-sm">Contact</th>
                     <th className="text-left p-4 font-medium text-muted-foreground text-sm">Company</th>
                     <th className="text-left p-4 font-medium text-muted-foreground text-sm">Status</th>
+                    <th className="text-left p-4 font-medium text-muted-foreground text-sm">Tags</th>
                     <th className="text-left p-4 font-medium text-muted-foreground text-sm">Source</th>
                     <th className="text-left p-4 font-medium text-muted-foreground text-sm">Created</th>
                     <th className="text-right p-4 font-medium text-muted-foreground text-sm">Actions</th>
@@ -210,6 +278,20 @@ export function Contacts() {
                         </Badge>
                       </td>
                       <td className="p-4">
+                        <div className="flex flex-wrap gap-1">
+                          {contact.tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                tagColorMap[tag] || 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+                              }`}
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="p-4">
                         <span className="text-sm">{sourceLabels[contact.source]}</span>
                       </td>
                       <td className="p-4">
@@ -242,7 +324,9 @@ export function Contacts() {
               </table>
               {filteredContacts.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground">
-                  No contacts found
+                  {activeTab === 'new_avatar'
+                    ? 'No avatar leads found. Sam will populate this tab when avatar searches are run.'
+                    : 'No contacts found'}
                 </div>
               )}
             </div>
@@ -352,6 +436,74 @@ export function Contacts() {
                     </select>
                   </div>
                 </div>
+
+                {/* AI-Managed Tags */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block flex items-center gap-2">
+                    <Tag className="w-3.5 h-3.5" />
+                    Tags
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {AI_TAGS.map((tag) => {
+                      const isActive = formData.tags.includes(tag.value)
+                      return (
+                        <button
+                          key={tag.value}
+                          type="button"
+                          onClick={() => toggleTag(tag.value)}
+                          className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                            isActive
+                              ? `${tag.color} border-current`
+                              : 'bg-muted text-muted-foreground border-transparent hover:border-border'
+                          }`}
+                        >
+                          {isActive && <span className="mr-1">&#10003;</span>}
+                          {tag.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {/* Custom tag input */}
+                  <div className="mt-2">
+                    <Input
+                      placeholder="Add custom tag and press Enter..."
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          const value = (e.target as HTMLInputElement).value.trim()
+                          if (value && !formData.tags.includes(value)) {
+                            setFormData(prev => ({ ...prev, tags: [...prev.tags, value] }));
+                            (e.target as HTMLInputElement).value = ''
+                          }
+                        }
+                      }}
+                      className="text-sm"
+                    />
+                  </div>
+                  {/* Display current tags */}
+                  {formData.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {formData.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                            tagColorMap[tag] || 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+                          }`}
+                        >
+                          {tag}
+                          <button
+                            type="button"
+                            onClick={() => toggleTag(tag)}
+                            className="hover:opacity-70"
+                          >
+                            &times;
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div>
                   <label className="text-sm font-medium mb-1 block">Notes</label>
                   <textarea
