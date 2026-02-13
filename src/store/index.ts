@@ -324,12 +324,31 @@ export const useCRMStore = create<CRMStore>()(
           ],
         })),
 
-      updateContact: (id, data) =>
-        set((state) => ({
-          contacts: state.contacts.map((c) =>
+      updateContact: (id, data) => {
+        const AI_TAGS = ['missed appointment', 'long appointment', 'Prospect', 'Batch']
+        set((state) => {
+          const oldContact = state.contacts.find((c) => c.id === id)
+          const updatedContacts = state.contacts.map((c) =>
             c.id === id ? { ...c, ...data, updatedAt: new Date() } : c
-          ),
-        })),
+          )
+          if (data.tags && oldContact) {
+            const newTags = data.tags.filter(
+              (t: string) => AI_TAGS.includes(t) && !oldContact.tags.includes(t)
+            )
+            if (newTags.length > 0) {
+              const updatedContact = updatedContacts.find((c) => c.id === id)
+              newTags.forEach((tag: string) => {
+                fetch('https://n8n.srv1244261.hstgr.cloud/webhook/sam-tag-listener', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ contact: updatedContact, tag, contactId: id }),
+                }).catch(() => {})
+              })
+            }
+          }
+          return { contacts: updatedContacts }
+        })
+      },
 
       deleteContact: (id) =>
         set((state) => ({
