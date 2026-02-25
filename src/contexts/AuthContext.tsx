@@ -2,6 +2,7 @@ import { createContext, useEffect, useState, useCallback, type ReactNode } from 
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import type { UserProfile } from '../types/auth'
+import { useCRMStore } from '../store'
 
 interface AuthContextType {
   session: Session | null
@@ -60,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(currentSession)
           const userProfile = await fetchProfile(currentSession.user.id)
           setProfile(userProfile)
+          if (userProfile) useCRMStore.getState().fetchContacts()
         }
       } catch (err) {
         console.error('Auth initialization error:', err)
@@ -78,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (event === 'SIGNED_IN' && newSession?.user) {
           const userProfile = await fetchProfile(newSession.user.id)
           setProfile(userProfile)
+          if (userProfile) useCRMStore.getState().fetchContacts()
         } else if (event === 'SIGNED_OUT') {
           setProfile(null)
         } else if (event === 'TOKEN_REFRESHED' && newSession?.user) {

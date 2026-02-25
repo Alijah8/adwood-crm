@@ -2,6 +2,47 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Contact, Deal, Task, CalendarEvent, Communication, Staff, Payment, Campaign } from '../types'
 import { generateId } from '../lib/utils'
+import { supabase } from '../lib/supabase'
+
+// --- Supabase <-> Contact mappers ---
+
+function toDbContact(c: { id: string; firstName: string; lastName: string; email: string; phone?: string; company?: string; jobTitle?: string; status: string; source: string; tags: string[]; notes?: string; assignedTo?: string; lastContactedAt?: Date }) {
+  return {
+    id: c.id,
+    first_name: c.firstName,
+    last_name: c.lastName,
+    email: c.email,
+    phone: c.phone ?? null,
+    company: c.company ?? null,
+    job_title: c.jobTitle ?? null,
+    status: c.status,
+    source: c.source,
+    tags: c.tags,
+    notes: c.notes ?? null,
+    assigned_to: c.assignedTo ?? null,
+    last_contacted_at: c.lastContactedAt ? new Date(c.lastContactedAt).toISOString() : null,
+  }
+}
+
+function fromDbContact(row: Record<string, unknown>): Contact {
+  return {
+    id: row.id as string,
+    firstName: row.first_name as string,
+    lastName: row.last_name as string,
+    email: row.email as string,
+    phone: (row.phone as string) ?? undefined,
+    company: (row.company as string) ?? undefined,
+    jobTitle: (row.job_title as string) ?? undefined,
+    status: row.status as Contact['status'],
+    source: row.source as Contact['source'],
+    tags: (row.tags as string[]) ?? [],
+    notes: (row.notes as string) ?? undefined,
+    assignedTo: (row.assigned_to as string) ?? undefined,
+    lastContactedAt: row.last_contacted_at ? new Date(row.last_contacted_at as string) : undefined,
+    createdAt: new Date(row.created_at as string),
+    updatedAt: new Date(row.updated_at as string),
+  }
+}
 
 interface CRMStore {
   // Data
@@ -60,6 +101,9 @@ interface CRMStore {
   // Bulk actions
   importContacts: (contacts: Contact[]) => void
   clearAllData: () => void
+
+  // Supabase sync
+  fetchContacts: () => Promise<void>
 }
 
 // Sample data for demo
@@ -296,8 +340,8 @@ const samplePayments: Payment[] = [
 export const useCRMStore = create<CRMStore>()(
   persist(
     (set) => ({
-      // Initial data
-      contacts: sampleContacts,
+      // Initial data (contacts loaded from Supabase via fetchContacts)
+      contacts: [],
       deals: sampleDeals,
       tasks: sampleTasks,
       events: sampleEvents,
@@ -310,50 +354,91 @@ export const useCRMStore = create<CRMStore>()(
       sidebarOpen: true,
       darkMode: false,
 
-      // Contact actions
-      addContact: (contact) =>
-        set((state) => ({
-          contacts: [
-            ...state.contacts,
-            {
-              ...contact,
-              id: generateId(),
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            },
-          ],
-        })),
+      // Contact actions (Supabase-backed)
+      addContact: async (contact) => {
+        const newContact: Contact = {
+          ...contact,
+          id: generateId(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
 
-      updateContact: (id, data) => {
-        const AI_TAGS = ['missed appointment', 'long appointment', 'Prospect', 'Batch']
-        set((state) => {
-          const oldContact = state.contacts.find((c) => c.id === id)
-          const updatedContacts = state.contacts.map((c) =>
-            c.id === id ? { ...c, ...data, updatedAt: new Date() } : c
-          )
-          if (data.tags && oldContact) {
-            const newTags = data.tags.filter(
-              (t: string) => AI_TAGS.includes(t) && !oldContact.tags.includes(t)
-            )
-            if (newTags.length > 0) {
-              const updatedContact = updatedContacts.find((c) => c.id === id)
-              newTags.forEach((tag: string) => {
-                fetch('https://n8n.srv1244261.hstgr.cloud/webhook/sam-tag-listener', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ contact: updatedContact, tag, contactId: id }),
-                }).catch(() => {})
-              })
-            }
-          }
-          return { contacts: updatedContacts }
-        })
+        // Write to Supabase first
+        const { error } = await supabase.from('contacts').insert(toDbContact(newContact))
+        if (error) { console.error('Supabase insert contact failed:', error); return }
+
+        set((state) => ({ contacts: [...state.contacts, newContact] }))
+
+        // Sync customer email to Supabase for Brian's email whitelist
+        if (newContact.email && (newContact.status === 'customer' || (newContact.tags && newContact.tags.includes('Customer')))) {
+          supabase.from('customer_emails').upsert(
+            { email: newContact.email, contact_name: `${newContact.firstName} ${newContact.lastName}`.trim() },
+            { onConflict: 'email' }
+          ).then(() => {})
+        }
       },
 
-      deleteContact: (id) =>
-        set((state) => ({
-          contacts: state.contacts.filter((c) => c.id !== id),
-        })),
+      updateContact: async (id, data) => {
+        const AI_TAGS = ['missed appointment', 'long appointment', 'Prospect', 'Batch']
+        const state = useCRMStore.getState()
+        const oldContact = state.contacts.find((c) => c.id === id)
+        if (!oldContact) return
+
+        const merged = { ...oldContact, ...data, updatedAt: new Date() }
+
+        // Build Supabase update payload (only changed fields)
+        const dbUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() }
+        if (data.firstName !== undefined) dbUpdate.first_name = data.firstName
+        if (data.lastName !== undefined) dbUpdate.last_name = data.lastName
+        if (data.email !== undefined) dbUpdate.email = data.email
+        if (data.phone !== undefined) dbUpdate.phone = data.phone ?? null
+        if (data.company !== undefined) dbUpdate.company = data.company ?? null
+        if (data.jobTitle !== undefined) dbUpdate.job_title = data.jobTitle ?? null
+        if (data.status !== undefined) dbUpdate.status = data.status
+        if (data.source !== undefined) dbUpdate.source = data.source
+        if (data.tags !== undefined) dbUpdate.tags = data.tags
+        if (data.notes !== undefined) dbUpdate.notes = data.notes ?? null
+        if (data.assignedTo !== undefined) dbUpdate.assigned_to = data.assignedTo ?? null
+        if (data.lastContactedAt !== undefined) dbUpdate.last_contacted_at = data.lastContactedAt ? new Date(data.lastContactedAt).toISOString() : null
+
+        const { error } = await supabase.from('contacts').update(dbUpdate).eq('id', id)
+        if (error) { console.error('Supabase update contact failed:', error); return }
+
+        set((s) => ({
+          contacts: s.contacts.map((c) => c.id === id ? merged : c),
+        }))
+
+        // Sync customer email to Supabase for Brian's email whitelist
+        if (merged.email && (
+          (data.status === 'customer' && oldContact.status !== 'customer') ||
+          (data.tags && data.tags.includes('Customer') && !oldContact.tags.includes('Customer'))
+        )) {
+          supabase.from('customer_emails').upsert(
+            { email: merged.email, contact_name: `${merged.firstName} ${merged.lastName}`.trim() },
+            { onConflict: 'email' }
+          ).then(() => {})
+        }
+
+        // Fire n8n webhook for AI tags
+        if (data.tags) {
+          const newTags = data.tags.filter(
+            (t: string) => AI_TAGS.includes(t) && !oldContact.tags.includes(t)
+          )
+          newTags.forEach((tag: string) => {
+            fetch('https://n8n.srv1244261.hstgr.cloud/webhook/sam-tag-listener', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contact: merged, tag, contactId: id }),
+            }).catch(() => {})
+          })
+        }
+      },
+
+      deleteContact: async (id) => {
+        const { error } = await supabase.from('contacts').delete().eq('id', id)
+        if (error) { console.error('Supabase delete contact failed:', error); return }
+        set((state) => ({ contacts: state.contacts.filter((c) => c.id !== id) }))
+      },
 
       // Deal actions
       addDeal: (deal) =>
@@ -521,12 +606,16 @@ export const useCRMStore = create<CRMStore>()(
         }),
 
       // Bulk actions
-      importContacts: (contacts) =>
-        set((state) => ({
-          contacts: [...state.contacts, ...contacts],
-        })),
+      importContacts: async (contacts) => {
+        if (contacts.length === 0) return
+        const dbRows = contacts.map(toDbContact)
+        const { error } = await supabase.from('contacts').upsert(dbRows, { onConflict: 'id' })
+        if (error) { console.error('Supabase import contacts failed:', error); return }
+        set((state) => ({ contacts: [...state.contacts, ...contacts] }))
+      },
 
-      clearAllData: () =>
+      clearAllData: async () => {
+        await supabase.from('contacts').delete().neq('id', '')
         set({
           contacts: [],
           deals: [],
@@ -535,10 +624,23 @@ export const useCRMStore = create<CRMStore>()(
           communications: [],
           payments: [],
           campaigns: [],
-        }),
+        })
+      },
+
+      // Supabase sync
+      fetchContacts: async () => {
+        const { data, error } = await supabase.from('contacts').select('*').order('created_at', { ascending: false })
+        if (error) { console.error('Supabase fetch contacts failed:', error); return }
+        if (data) { set({ contacts: data.map(fromDbContact) }) }
+      },
     }),
     {
       name: 'adwood-crm-storage',
+      partialize: (state) => {
+        // Contacts are stored in Supabase, not localStorage
+        const { contacts, ...rest } = state
+        return rest
+      },
     }
   )
 )
