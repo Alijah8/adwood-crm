@@ -514,6 +514,7 @@ export function Settings() {
                 Export
               </Button>
             </div>
+            {profile?.role === 'admin' && (
             <div className="border-t border-border pt-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -533,6 +534,7 @@ export function Settings() {
                 </Button>
               </div>
             </div>
+            )}
           </CardContent>
         </Card>
 

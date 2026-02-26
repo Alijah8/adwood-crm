@@ -34,7 +34,7 @@ export function formatRelativeTime(date: Date | string): string {
 }
 
 export function generateId(): string {
-  return Math.random().toString(36).substring(2, 15)
+  return crypto.randomUUID()
 }
 
 export function getInitials(name: string): string {

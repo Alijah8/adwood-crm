@@ -30,17 +30,28 @@ export function CreateUserModal({ onClose, onUserCreated }: CreateUserModalProps
     const special = '!@#$%'
     const all = upper + lower + digits + special
 
+    const randomIndex = (len: number) => {
+      const arr = new Uint32Array(1)
+      crypto.getRandomValues(arr)
+      return arr[0] % len
+    }
+
     let password = ''
     // Ensure at least one of each required type
-    password += upper[Math.floor(Math.random() * upper.length)]
-    password += lower[Math.floor(Math.random() * lower.length)]
-    password += digits[Math.floor(Math.random() * digits.length)]
-    password += special[Math.floor(Math.random() * special.length)]
+    password += upper[randomIndex(upper.length)]
+    password += lower[randomIndex(lower.length)]
+    password += digits[randomIndex(digits.length)]
+    password += special[randomIndex(special.length)]
     for (let i = 4; i < 12; i++) {
-      password += all[Math.floor(Math.random() * all.length)]
+      password += all[randomIndex(all.length)]
     }
-    // Shuffle
-    return password.split('').sort(() => Math.random() - 0.5).join('')
+    // Fisher-Yates shuffle using crypto
+    const chars = password.split('')
+    for (let j = chars.length - 1; j > 0; j--) {
+      const k = randomIndex(j + 1)
+      ;[chars[j], chars[k]] = [chars[k], chars[j]]
+    }
+    return chars.join('')
   }
 
   const validateForm = (): boolean => {

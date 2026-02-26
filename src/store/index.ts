@@ -377,8 +377,8 @@ export const useCRMStore = create<CRMStore>()(
       },
 
       deleteDeal: async (id) => {
-        const { error } = await supabase.from('deals').delete().eq('id', id)
-        if (error) { console.error('Supabase delete deal:', error); return }
+        const { error } = await supabase.from('deals').update({ deleted_at: new Date().toISOString() }).eq('id', id)
+        if (error) { console.error('Supabase soft-delete deal:', error); return }
         set((s) => ({ deals: s.deals.filter((d) => d.id !== id) }))
       },
 
@@ -401,8 +401,8 @@ export const useCRMStore = create<CRMStore>()(
       },
 
       deleteTask: async (id) => {
-        const { error } = await supabase.from('tasks').delete().eq('id', id)
-        if (error) { console.error('Supabase delete task:', error); return }
+        const { error } = await supabase.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', id)
+        if (error) { console.error('Supabase soft-delete task:', error); return }
         set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }))
       },
 
@@ -425,8 +425,8 @@ export const useCRMStore = create<CRMStore>()(
       },
 
       deleteEvent: async (id) => {
-        const { error } = await supabase.from('calendar_events').delete().eq('id', id)
-        if (error) { console.error('Supabase delete event:', error); return }
+        const { error } = await supabase.from('calendar_events').update({ deleted_at: new Date().toISOString() }).eq('id', id)
+        if (error) { console.error('Supabase soft-delete event:', error); return }
         set((s) => ({ events: s.events.filter((e) => e.id !== id) }))
       },
 
@@ -539,14 +539,14 @@ export const useCRMStore = create<CRMStore>()(
 
       fetchAll: async () => {
         const [contacts, deals, tasks, events, comms, staffRows, payments, campaigns] = await Promise.all([
-          supabase.from('contacts').select('*').order('created_at', { ascending: false }),
-          supabase.from('deals').select('*').order('created_at', { ascending: false }),
-          supabase.from('tasks').select('*').order('created_at', { ascending: false }),
-          supabase.from('calendar_events').select('*').order('start_time', { ascending: true }),
-          supabase.from('communications').select('*').order('created_at', { ascending: false }),
-          supabase.from('staff').select('*').order('created_at', { ascending: true }),
-          supabase.from('payments').select('*').order('created_at', { ascending: false }),
-          supabase.from('campaigns').select('*').order('created_at', { ascending: false }),
+          supabase.from('contacts').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+          supabase.from('deals').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+          supabase.from('tasks').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+          supabase.from('calendar_events').select('*').is('deleted_at', null).order('start_time', { ascending: true }),
+          supabase.from('communications').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+          supabase.from('staff').select('*').is('deleted_at', null).order('created_at', { ascending: true }),
+          supabase.from('payments').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+          supabase.from('campaigns').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
         ])
         set({
           contacts: contacts.data?.map(fromDbContact) ?? [],
