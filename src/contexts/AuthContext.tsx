@@ -55,16 +55,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession()
+        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession()
+
+        // If stored session is broken or expired, clear it so login works
+        if (sessionError || (currentSession && !currentSession.user)) {
+          await supabase.auth.signOut().catch(() => {})
+          setSession(null)
+          return
+        }
 
         if (currentSession?.user) {
-          setSession(currentSession)
+          // Validate the session is actually usable by fetching profile
           const userProfile = await fetchProfile(currentSession.user.id)
+          if (!userProfile) {
+            // Session exists but is stale/invalid — clear it
+            await supabase.auth.signOut().catch(() => {})
+            setSession(null)
+            return
+          }
+          setSession(currentSession)
           setProfile(userProfile)
-          if (userProfile) useCRMStore.getState().fetchAll()
+          useCRMStore.getState().fetchAll()
         }
       } catch (err) {
         console.error('Auth initialization error:', err)
+        // Clear any broken session state so login page shows cleanly
+        await supabase.auth.signOut().catch(() => {})
+        setSession(null)
       } finally {
         setLoading(false)
       }
@@ -113,7 +130,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }, INACTIVITY_TIMEOUT - WARNING_BEFORE)
 
       timeoutId = setTimeout(async () => {
-        await supabase.auth.signOut()
+        await supabase.auth.signOut().catch(() => {
+          localStorage.removeItem('sb-kddkibsrdgtcorhrtjip-auth-token')
+        })
+        setSession(null)
+        setProfile(null)
         setError('Session expired due to inactivity. Please log in again.')
       }, INACTIVITY_TIMEOUT)
     }
@@ -148,6 +169,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true)
 
     try {
+      // Clear any stale session before attempting fresh login
+      await supabase.auth.signOut().catch(() => {})
+
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password,
@@ -181,12 +205,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     try {
       await supabase.auth.signOut()
+    } catch (err) {
+      // signOut failed (network down, etc.) — remove token manually as fallback
+      console.error('Logout error, clearing token manually:', err)
+      localStorage.removeItem('sb-kddkibsrdgtcorhrtjip-auth-token')
+    } finally {
       setSession(null)
       setProfile(null)
       setError(null)
-    } catch (err) {
-      console.error('Logout error:', err)
-    } finally {
       setLoading(false)
     }
   }, [])
