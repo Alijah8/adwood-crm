@@ -330,18 +330,31 @@ export const useCRMStore = create<CRMStore>()(
 
         if (data.tags) {
           const newTags = data.tags.filter((t: string) => AI_TAGS.includes(t) && !oldContact.tags.includes(t))
-          newTags.forEach((tag: string) => {
-            fetch('https://n8n.srv1244261.hstgr.cloud/webhook/sam-tag-listener', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contact: merged, tag, contactId: id }),
-            }).catch(() => {})
-          })
+          if (newTags.length > 0) {
+            const { data: { session: currentSession } } = await supabase.auth.getSession()
+            if (currentSession?.access_token) {
+              const proxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/webhook-proxy`
+              newTags.forEach((tag: string) => {
+                fetch(proxyUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${currentSession.access_token}`,
+                  },
+                  body: JSON.stringify({
+                    webhook: 'https://n8n.srv1244261.hstgr.cloud/webhook/sam-tag-listener',
+                    payload: { contact: merged, tag, contactId: id },
+                  }),
+                }).catch(() => {})
+              })
+            }
+          }
         }
       },
 
       deleteContact: async (id) => {
-        const { error } = await supabase.from('contacts').delete().eq('id', id)
-        if (error) { console.error('Supabase delete contact:', error); return }
+        const { error } = await supabase.from('contacts').update({ deleted_at: new Date().toISOString() }).eq('id', id)
+        if (error) { console.error('Supabase soft-delete contact:', error); return }
         set((s) => ({ contacts: s.contacts.filter((c) => c.id !== id) }))
       },
 
@@ -508,15 +521,16 @@ export const useCRMStore = create<CRMStore>()(
       },
 
       clearAllData: async () => {
+        const now = new Date().toISOString()
         await Promise.all([
-          supabase.from('contacts').delete().neq('id', ''),
-          supabase.from('deals').delete().neq('id', ''),
-          supabase.from('tasks').delete().neq('id', ''),
-          supabase.from('calendar_events').delete().neq('id', ''),
-          supabase.from('communications').delete().neq('id', ''),
-          supabase.from('staff').delete().neq('id', ''),
-          supabase.from('payments').delete().neq('id', ''),
-          supabase.from('campaigns').delete().neq('id', ''),
+          supabase.from('contacts').update({ deleted_at: now }).is('deleted_at', null),
+          supabase.from('deals').update({ deleted_at: now }).is('deleted_at', null),
+          supabase.from('tasks').update({ deleted_at: now }).is('deleted_at', null),
+          supabase.from('calendar_events').update({ deleted_at: now }).is('deleted_at', null),
+          supabase.from('communications').update({ deleted_at: now }).is('deleted_at', null),
+          supabase.from('staff').update({ deleted_at: now }).is('deleted_at', null),
+          supabase.from('payments').update({ deleted_at: now }).is('deleted_at', null),
+          supabase.from('campaigns').update({ deleted_at: now }).is('deleted_at', null),
         ])
         set({ contacts: [], deals: [], tasks: [], events: [], communications: [], payments: [], campaigns: [], staff: [] })
       },

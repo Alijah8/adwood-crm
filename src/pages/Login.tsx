@@ -4,7 +4,28 @@ import { useAuth } from '../hooks/useAuth'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
-import { Eye, EyeOff, Lock, Mail, Sun, Moon, Loader2 } from 'lucide-react'
+import { Eye, EyeOff, Lock, Mail, Sun, Moon, Loader2, ShieldAlert } from 'lucide-react'
+
+const LOCKOUT_KEY = 'adwood-crm-login-lockout'
+const MAX_ATTEMPTS = 5
+const BASE_LOCKOUT_MS = 5 * 60 * 1000 // 5 minutes
+const MAX_LOCKOUT_MS = 5 * 60 * 60 * 1000 // ~5 hours
+
+function getLockoutState(): { attempts: number; lockedUntil: number } {
+  try {
+    const raw = localStorage.getItem(LOCKOUT_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch { /* ignore */ }
+  return { attempts: 0, lockedUntil: 0 }
+}
+
+function setLockoutState(attempts: number, lockedUntil: number) {
+  localStorage.setItem(LOCKOUT_KEY, JSON.stringify({ attempts, lockedUntil }))
+}
+
+function clearLockout() {
+  localStorage.removeItem(LOCKOUT_KEY)
+}
 
 export function Login() {
   const navigate = useNavigate()
@@ -18,6 +39,7 @@ export function Login() {
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [resetSent, setResetSent] = useState(false)
+  const [lockoutRemaining, setLockoutRemaining] = useState(0)
 
   // Dark mode state (reads from localStorage independently of store)
   const [darkMode, setDarkMode] = useState(() => {
@@ -40,6 +62,24 @@ export function Login() {
       document.documentElement.classList.remove('dark')
     }
   }, [darkMode])
+
+  // Lockout countdown timer
+  useEffect(() => {
+    const { lockedUntil } = getLockoutState()
+    if (lockedUntil <= Date.now()) return
+
+    setLockoutRemaining(Math.ceil((lockedUntil - Date.now()) / 1000))
+    const interval = setInterval(() => {
+      const remaining = Math.ceil((lockedUntil - Date.now()) / 1000)
+      if (remaining <= 0) {
+        setLockoutRemaining(0)
+        clearInterval(interval)
+      } else {
+        setLockoutRemaining(remaining)
+      }
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [lockoutRemaining])
 
   // Redirect if already logged in
   useEffect(() => {
@@ -73,14 +113,37 @@ export function Login() {
     setLocalError(null)
     clearError()
 
+    // Check lockout
+    const { attempts, lockedUntil } = getLockoutState()
+    if (lockedUntil > Date.now()) {
+      const secs = Math.ceil((lockedUntil - Date.now()) / 1000)
+      setLockoutRemaining(secs)
+      setLocalError(`Too many failed attempts. Try again in ${secs}s.`)
+      return
+    }
+
     if (!validateForm()) return
 
     setIsLoading(true)
     try {
       await login(email, password)
+      clearLockout()
+      // Small delay so the browser detects successful login and offers to save password
+      await new Promise((r) => setTimeout(r, 100))
       navigate('/', { replace: true })
     } catch {
-      // Error is set in AuthContext
+      // Increment failed attempts
+      const newAttempts = attempts + 1
+      if (newAttempts >= MAX_ATTEMPTS) {
+        // Exponential backoff: 5m, 10m, 20m, 40m, ... (max ~5 hours)
+        const multiplier = Math.pow(2, newAttempts - MAX_ATTEMPTS)
+        const lockMs = Math.min(BASE_LOCKOUT_MS * multiplier, MAX_LOCKOUT_MS)
+        const until = Date.now() + lockMs
+        setLockoutState(newAttempts, until)
+        setLockoutRemaining(Math.ceil(lockMs / 1000))
+      } else {
+        setLockoutState(newAttempts, 0)
+      }
     } finally {
       setIsLoading(false)
     }
@@ -148,7 +211,14 @@ export function Login() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
-                {displayError && (
+                {lockoutRemaining > 0 && (
+                  <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-sm flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 flex-shrink-0" />
+                    Account locked. Try again in {lockoutRemaining >= 3600 ? `${Math.floor(lockoutRemaining / 3600)}h ${Math.floor((lockoutRemaining % 3600) / 60)}m` : lockoutRemaining >= 60 ? `${Math.floor(lockoutRemaining / 60)}m ${lockoutRemaining % 60}s` : `${lockoutRemaining}s`}.
+                  </div>
+                )}
+
+                {displayError && !lockoutRemaining && (
                   <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
                     {displayError}
                   </div>
@@ -162,12 +232,13 @@ export function Login() {
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       id="email"
+                      name="email"
                       type="email"
                       placeholder="you@company.com"
                       value={email}
                       onChange={(e) => { setEmail(e.target.value); setLocalError(null) }}
                       className="pl-10"
-                      autoComplete="email"
+                      autoComplete="username"
                       autoFocus
                       disabled={isLoading}
                     />
@@ -182,6 +253,7 @@ export function Login() {
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       id="password"
+                      name="password"
                       type={showPassword ? 'text' : 'password'}
                       placeholder="Enter your password"
                       value={password}
@@ -215,12 +287,14 @@ export function Login() {
                   </button>
                 </div>
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <Button type="submit" className="w-full" disabled={isLoading || lockoutRemaining > 0}>
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       Signing in...
                     </>
+                  ) : lockoutRemaining > 0 ? (
+                    `Locked (${lockoutRemaining >= 60 ? `${Math.floor(lockoutRemaining / 60)}m` : `${lockoutRemaining}s`})`
                   ) : (
                     'Sign in'
                   )}

@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { hasRouteAccess } from '../types/auth'
+import { supabase } from '../lib/supabase'
 import { Loader2 } from 'lucide-react'
 
 interface ProtectedRouteProps {
@@ -10,8 +12,20 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { session, profile, loading } = useAuth()
   const location = useLocation()
+  const [mfaRequired, setMfaRequired] = useState(false)
 
-  // Show loading spinner while checking auth
+  useEffect(() => {
+    if (!session) return
+
+    supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      .then(({ data }) => {
+        if (data?.nextLevel === 'aal2' && data.currentLevel !== 'aal2') {
+          setMfaRequired(true)
+        }
+      })
+      .catch(() => {}) // RLS policies are the real security backstop
+  }, [session])
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -31,6 +45,11 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   // Check if user is active
   if (!profile.is_active) {
     return <Navigate to="/login" replace />
+  }
+
+  // MFA enrolled but session not at aal2 → redirect to MFA verify
+  if (mfaRequired) {
+    return <Navigate to="/mfa-verify" replace />
   }
 
   // Check route access based on role

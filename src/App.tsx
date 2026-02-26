@@ -4,6 +4,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { Layout } from './components/layout/Layout'
 import { Login } from './pages/Login'
 import { ResetPassword } from './pages/ResetPassword'
+import { MFAVerify } from './pages/MFAVerify'
 import { Dashboard } from './pages/Dashboard'
 import { Contacts } from './pages/Contacts'
 import { Deals } from './pages/Deals'
@@ -24,6 +25,7 @@ function App() {
           {/* Public routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/mfa-verify" element={<MFAVerify />} />
 
           {/* Protected CRM routes */}
           <Route
