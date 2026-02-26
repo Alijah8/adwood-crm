@@ -252,17 +252,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (data.phone !== undefined) safeFields.phone = data.phone
     if (data.avatar_url !== undefined) safeFields.avatar_url = data.avatar_url
 
-    const { error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from('profiles')
       .update(safeFields)
       .eq('id', profile.id)
+      .select('*')
+      .single()
 
     if (updateError) {
       throw new Error(updateError.message)
     }
 
-    // Update local profile state
-    setProfile(prev => prev ? { ...prev, ...data } : null)
+    // Update local profile state from server response (not raw input)
+    setProfile(updated as UserProfile)
   }, [profile])
 
   const clearError = useCallback(() => setError(null), [])
