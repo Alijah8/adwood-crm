@@ -342,7 +342,6 @@ export const useCRMStore = create<CRMStore>()(
                     'Authorization': `Bearer ${currentSession.access_token}`,
                   },
                   body: JSON.stringify({
-                    webhook: 'https://n8n.srv1244261.hstgr.cloud/webhook/sam-tag-listener',
                     payload: { contact: merged, tag, contactId: id },
                   }),
                 }).catch(() => {})

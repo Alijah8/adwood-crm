@@ -313,7 +313,11 @@ export function Contacts() {
                             variant="ghost"
                             size="sm"
                             className="text-destructive hover:text-destructive"
-                            onClick={() => deleteContact(contact.id)}
+                            onClick={() => {
+                              if (confirm(`Delete ${contact.firstName} ${contact.lastName}? This can be recovered within 30 days.`)) {
+                                deleteContact(contact.id)
+                              }
+                            }}
                           >
                             Delete
                           </Button>

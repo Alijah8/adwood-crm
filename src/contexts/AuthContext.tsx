@@ -246,12 +246,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!profile) return
     setError(null)
 
+    // Only allow updating safe fields (role, is_active, created_by blocked by RLS + here)
+    const safeFields: Record<string, unknown> = { updated_at: new Date().toISOString() }
+    if (data.name !== undefined) safeFields.name = data.name
+    if (data.phone !== undefined) safeFields.phone = data.phone
+    if (data.avatar_url !== undefined) safeFields.avatar_url = data.avatar_url
+
     const { error: updateError } = await supabase
       .from('profiles')
-      .update({
-        ...data,
-        updated_at: new Date().toISOString(),
-      })
+      .update(safeFields)
       .eq('id', profile.id)
 
     if (updateError) {

@@ -5,6 +5,7 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useCRMStore } from '../store'
 import { useAuth } from '../hooks/useAuth'
+import { RoleGate } from '../components/RoleGate'
 import { supabase } from '../lib/supabase'
 import {
   Download, Trash2, Moon, Sun, Database, Webhook, Mail, Globe,
@@ -504,6 +505,7 @@ export function Settings() {
             <CardDescription>Export, import, or reset your data</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <RoleGate requiredRoles={['admin', 'manager']}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium">Export Data</p>
@@ -514,6 +516,7 @@ export function Settings() {
                 Export
               </Button>
             </div>
+            </RoleGate>
             {profile?.role === 'admin' && (
             <div className="border-t border-border pt-4">
               <div className="flex items-center justify-between">

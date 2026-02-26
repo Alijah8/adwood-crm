@@ -143,6 +143,12 @@ export function CSVImportModal({ onClose, onImported }: CSVImportModalProps) {
       return
     }
 
+    const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
+    if (file.size > MAX_FILE_SIZE) {
+      setError(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 5 MB.`)
+      return
+    }
+
     setError(null)
 
     const reader = new FileReader()

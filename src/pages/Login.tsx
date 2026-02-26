@@ -39,6 +39,7 @@ export function Login() {
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [resetSent, setResetSent] = useState(false)
+  const [resetCooldown, setResetCooldown] = useState(0)
   const [lockoutRemaining, setLockoutRemaining] = useState(0)
 
   // Dark mode state (reads from localStorage independently of store)
@@ -149,10 +150,26 @@ export function Login() {
     }
   }
 
+  // Reset cooldown countdown
+  useEffect(() => {
+    if (resetCooldown <= 0) return
+    const interval = setInterval(() => {
+      setResetCooldown(prev => {
+        if (prev <= 1) { clearInterval(interval); return 0 }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [resetCooldown])
+
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!resetEmail.trim()) {
       setLocalError('Please enter your email address')
+      return
+    }
+    if (resetCooldown > 0) {
+      setLocalError(`Please wait ${resetCooldown}s before requesting another reset.`)
       return
     }
 
@@ -168,6 +185,7 @@ export function Login() {
       )
       if (error) throw error
       setResetSent(true)
+      setResetCooldown(60) // 60-second cooldown between reset requests
     } catch {
       setLocalError('Failed to send reset email. Please try again.')
     } finally {
@@ -360,12 +378,14 @@ export function Login() {
                     </div>
                   </div>
 
-                  <Button type="submit" className="w-full" disabled={isLoading}>
+                  <Button type="submit" className="w-full" disabled={isLoading || resetCooldown > 0}>
                     {isLoading ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         Sending...
                       </>
+                    ) : resetCooldown > 0 ? (
+                      `Wait ${resetCooldown}s`
                     ) : (
                       'Send reset link'
                     )}
