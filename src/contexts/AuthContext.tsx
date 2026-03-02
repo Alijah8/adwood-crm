@@ -51,80 +51,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data as UserProfile
   }, [])
 
-  // Clean sign-out helper: always clears localStorage even if API call fails
-  const forceSignOut = useCallback(async () => {
-    try {
-      await supabase.auth.signOut()
-    } catch {
-      localStorage.removeItem('sb-kddkibsrdgtcorhrtjip-auth-token')
-    }
-    setSession(null)
-    setProfile(null)
-  }, [])
-
-  // Initialize auth state
+  // Initialize auth via onAuthStateChange ONLY.
+  // Calling getSession() or refreshSession() alongside onAuthStateChange
+  // causes an AbortError from Supabase's internal navigator.locks.
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        console.log('[AUTH] 1. getSession...')
-        const { data: { session: storedSession } } = await supabase.auth.getSession()
-
-        if (!storedSession) {
-          console.log('[AUTH] No stored session — show login')
-          return
-        }
-        console.log('[AUTH] 2. stored session found, refreshing...')
-
-        const { data: { session: freshSession }, error: refreshError } =
-          await supabase.auth.refreshSession()
-
-        if (refreshError || !freshSession?.user) {
-          console.error('[AUTH] 3. refresh FAILED:', refreshError?.message)
-          await forceSignOut()
-          return
-        }
-        console.log('[AUTH] 3. refresh OK, fetching profile...')
-
-        const userProfile = await fetchProfile(freshSession.user.id)
-        if (!userProfile) {
-          console.error('[AUTH] 4. profile fetch FAILED — signing out')
-          await forceSignOut()
-          return
-        }
-        console.log('[AUTH] 4. profile OK, loading CRM data...')
-        setSession(freshSession)
-        setProfile(userProfile)
-        useCRMStore.getState().fetchAll()
-        console.log('[AUTH] 5. DONE — app should render')
-      } catch (err) {
-        console.error('[AUTH] CRASH:', err)
-        await forceSignOut()
-      } finally {
-        console.log('[AUTH] setLoading(false)')
-        setLoading(false)
-      }
-    }
-
-    initAuth()
-
-    // Listen for auth state changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
-        // Skip INITIAL_SESSION — initAuth handles initialization above
-        if (event === 'INITIAL_SESSION') return
-
-        setSession(newSession)
-
-        if (event === 'SIGNED_IN' && newSession?.user) {
-          const userProfile = await fetchProfile(newSession.user.id)
-          setProfile(userProfile)
-          if (userProfile) useCRMStore.getState().fetchAll()
+        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+          if (newSession?.user) {
+            const userProfile = await fetchProfile(newSession.user.id)
+            if (userProfile) {
+              setSession(newSession)
+              setProfile(userProfile)
+              useCRMStore.getState().fetchAll()
+            } else {
+              // Profile fetch failed (expired token or deactivated user).
+              // Don't sign out on INITIAL_SESSION — auto-refresh may still
+              // fire TOKEN_REFRESHED and recover the session.
+              setSession(null)
+              setProfile(null)
+            }
+          } else {
+            setSession(null)
+            setProfile(null)
+          }
+          setLoading(false)
         } else if (event === 'SIGNED_OUT') {
+          setSession(null)
           setProfile(null)
+          setLoading(false)
         } else if (event === 'TOKEN_REFRESHED' && newSession?.user) {
-          // Re-check if user is still active on token refresh
+          // Token was auto-refreshed — update session and re-validate profile
+          setSession(newSession)
           const userProfile = await fetchProfile(newSession.user.id)
-          setProfile(userProfile)
+          if (userProfile) {
+            setProfile(userProfile)
+            // If this is recovering from an expired-token INITIAL_SESSION,
+            // contacts will be empty — load them now.
+            if (!useCRMStore.getState().contacts.length) {
+              useCRMStore.getState().fetchAll()
+            }
+          }
         }
       }
     )
@@ -132,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       subscription.unsubscribe()
     }
-  }, [fetchProfile, forceSignOut])
+  }, [fetchProfile])
 
   // Inactivity timeout
   useEffect(() => {
@@ -151,7 +118,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }, INACTIVITY_TIMEOUT - WARNING_BEFORE)
 
       timeoutId = setTimeout(async () => {
-        await forceSignOut()
+        try {
+          await supabase.auth.signOut()
+        } catch {
+          localStorage.removeItem('sb-kddkibsrdgtcorhrtjip-auth-token')
+        }
+        setSession(null)
+        setProfile(null)
         setError('Session expired due to inactivity. Please log in again.')
       }, INACTIVITY_TIMEOUT)
     }
@@ -165,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(warningId)
       events.forEach(event => window.removeEventListener(event, resetTimer))
     }
-  }, [session, forceSignOut])
+  }, [session])
 
   // Multi-tab sync: listen for storage events to sync logout across tabs
   useEffect(() => {
@@ -221,12 +194,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     setLoading(true)
     try {
-      await forceSignOut()
-      setError(null)
-    } finally {
-      setLoading(false)
+      await supabase.auth.signOut()
+    } catch {
+      localStorage.removeItem('sb-kddkibsrdgtcorhrtjip-auth-token')
     }
-  }, [forceSignOut])
+    setSession(null)
+    setProfile(null)
+    setError(null)
+    setLoading(false)
+  }, [])
 
   const resetPassword = useCallback(async (email: string) => {
     setError(null)

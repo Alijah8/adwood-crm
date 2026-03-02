@@ -26,8 +26,6 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       .catch(() => {}) // RLS policies are the real security backstop
   }, [session])
 
-  console.log('[ROUTE]', { loading, hasSession: !!session, hasProfile: !!profile, mfaRequired, path: location.pathname })
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -41,7 +39,6 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   // Not authenticated → redirect to login
   if (!session || !profile) {
-    console.log('[ROUTE] No session/profile — redirecting to login')
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
