@@ -66,38 +66,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
+        console.log('[AUTH] 1. getSession...')
         const { data: { session: storedSession } } = await supabase.auth.getSession()
 
         if (!storedSession) {
-          // No stored session — show login
+          console.log('[AUTH] No stored session — show login')
           return
         }
+        console.log('[AUTH] 2. stored session found, refreshing...')
 
-        // Force-refresh the session so we always have a valid access token.
-        // getSession() reads from localStorage without refreshing, so an
-        // expired JWT would cause every subsequent DB query to 401.
         const { data: { session: freshSession }, error: refreshError } =
           await supabase.auth.refreshSession()
 
         if (refreshError || !freshSession?.user) {
-          // Refresh token is dead — clean up and show login
+          console.error('[AUTH] 3. refresh FAILED:', refreshError?.message)
           await forceSignOut()
           return
         }
+        console.log('[AUTH] 3. refresh OK, fetching profile...')
 
-        // Session is valid — load profile and CRM data
         const userProfile = await fetchProfile(freshSession.user.id)
         if (!userProfile) {
+          console.error('[AUTH] 4. profile fetch FAILED — signing out')
           await forceSignOut()
           return
         }
+        console.log('[AUTH] 4. profile OK, loading CRM data...')
         setSession(freshSession)
         setProfile(userProfile)
         useCRMStore.getState().fetchAll()
+        console.log('[AUTH] 5. DONE — app should render')
       } catch (err) {
-        console.error('Auth initialization error:', err)
+        console.error('[AUTH] CRASH:', err)
         await forceSignOut()
       } finally {
+        console.log('[AUTH] setLoading(false)')
         setLoading(false)
       }
     }
