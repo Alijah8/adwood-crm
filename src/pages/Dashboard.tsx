@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Clock,
   ArrowUpRight,
+  AlertTriangle,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -45,7 +46,7 @@ const dealsData = [
 ]
 
 export function Dashboard() {
-  const { contacts, deals, tasks, events, payments } = useCRMStore()
+  const { contacts, deals, tasks, events, payments, reminders } = useCRMStore()
   const { profile } = useAuth()
   const firstName = profile?.name?.split(' ')[0] || 'there'
 
@@ -78,6 +79,11 @@ export function Dashboard() {
     const completedPayments = payments.filter(p => p.status === 'completed')
     const totalRevenue = completedPayments.reduce((sum, p) => sum + p.amount, 0)
 
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const failedReminders = reminders.filter(r =>
+      r.status === 'failed' && new Date(r.createdAt) >= sevenDaysAgo
+    ).length
+
     return {
       totalContacts: contacts.length,
       newContactsThisMonth,
@@ -88,8 +94,9 @@ export function Dashboard() {
       overdueTasks,
       upcomingEvents,
       totalRevenue,
+      failedReminders,
     }
-  }, [contacts, deals, tasks, events, payments])
+  }, [contacts, deals, tasks, events, payments, reminders])
 
   const recentContacts = useMemo(() => {
     return [...contacts]
@@ -187,6 +194,23 @@ export function Dashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Failed Reminders Warning */}
+        {metrics.failedReminders > 0 && (
+          <Card className="border-destructive bg-destructive/5">
+            <CardContent className="flex items-center gap-3 p-4">
+              <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-destructive">
+                  {metrics.failedReminders} reminder{metrics.failedReminders !== 1 ? 's' : ''} failed to send
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Check the Calendar page for details. This may indicate a Gmail authentication issue.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Charts Row */}
         <div className="grid gap-4 lg:grid-cols-2">

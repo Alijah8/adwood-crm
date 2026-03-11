@@ -167,7 +167,35 @@ Two rounds of security audits on crm.adwoodconsulting.com. Round 1 found 3 CRITI
 
 ---
 
-## Current Security State (post Round 3)
+## Round 4 — Fixes (2026-03-01)
+
+### C1-R4: AbortError crash on page refresh (auth broken)
+- **Problem**: Supabase JS v2 uses `navigator.locks.request()` internally for session coordination. On page refresh, this caused `AbortError: signal is aborted without reason`, crashing auth initialization and creating an infinite redirect loop between login and dashboard. Users had to manually delete the auth token from localStorage to recover.
+- **Root cause**: `navigator.locks` contention between Supabase's internal GoTrueClient operations.
+- **Fix**: Custom no-op `lock` function passed to Supabase client config, bypassing `navigator.locks` entirely. Acceptable for single-tab CRM usage.
+- **File**: `src/lib/supabase.ts` — added `lock` option to `createClient` auth config
+- **Commit**: `423475b`
+
+### C2-R4: onAuthStateChange rewrite (removed getSession/refreshSession)
+- **Problem**: Calling `getSession()` or `refreshSession()` alongside `onAuthStateChange()` caused additional `navigator.locks` conflicts. Session and profile could get out of sync, causing infinite redirect loops.
+- **Fix**: Auth initialization now uses ONLY `onAuthStateChange`. Session and profile are set atomically. Handles `INITIAL_SESSION`, `SIGNED_IN`, `SIGNED_OUT`, and `TOKEN_REFRESHED` events.
+- **File**: `src/contexts/AuthContext.tsx` — complete rewrite of auth initialization
+- **Commit**: `b813358`
+
+### C3-R4: MFA RESTRICTIVE policies blocked all data access (403)
+- **Problem**: Round 3 changed MFA policies to RESTRICTIVE, but the inline policy subquery reads `auth.mfa_factors` directly. The `authenticated` role lacks SELECT permission on that table, so the subquery fails silently and the policy evaluates to FALSE. All 8 data tables returned 403 on every SELECT. Profiles table was unaffected (no MFA policy).
+- **Fix**: Created `public.mfa_check_passes()` SECURITY DEFINER function that can read `auth.mfa_factors` with elevated privileges. All 9 RESTRICTIVE policies now call this function instead of the inline subquery.
+- **Migration**: `fix_mfa_policy_permission`
+- **Function**: `public.mfa_check_passes()` — `SECURITY DEFINER`, `search_path = public`
+
+### L1-R4: CSP updated for Google Fonts
+- **File**: `public/serve.json`
+- **Fix**: Added `https://fonts.googleapis.com` to `style-src` and `https://fonts.gstatic.com` to `font-src`
+- **Commit**: included in earlier deploy
+
+---
+
+## Current Security State (post Round 4)
 
 ### RLS Policy Summary
 
@@ -212,6 +240,12 @@ Two rounds of security audits on crm.adwoodconsulting.com. Round 1 found 3 CRITI
 10. `drop_unused_indexes_round3` (Round 3)
 11. `wrap_rls_auth_calls_in_select` (Round 3)
 12. `make_mfa_policies_restrictive` (Round 3)
+13. `fix_mfa_policy_permission` (Round 4) — SECURITY DEFINER wrapper for MFA policy
+
+### SECURITY DEFINER Functions
+- `public.handle_new_user()` — new user trigger, hardcoded sales role
+- `public.get_my_role()` — returns current user's role from profiles
+- `public.mfa_check_passes()` — reads `auth.mfa_factors` for MFA policy evaluation (Round 4)
 
 ### Edge Functions
 - **webhook-proxy** v4 — JWT auth + active profile check + hardcoded n8n URL + WEBHOOK_SECRET header + CORS locked to crm.adwoodconsulting.com
@@ -220,7 +254,13 @@ Two rounds of security audits on crm.adwoodconsulting.com. Round 1 found 3 CRITI
 - `package.json` — added `serve` dep + `start` script (H1-R3)
 - `src/contexts/AuthContext.tsx` — updateProfile uses server response (L1-R3)
 
+### Files Modified (Round 4)
+- `src/lib/supabase.ts` — custom lock function to bypass navigator.locks (C1-R4)
+- `src/contexts/AuthContext.tsx` — onAuthStateChange-only auth initialization (C2-R4)
+- `src/components/ProtectedRoute.tsx` — removed debug logging
+- `public/serve.json` — CSP updated for Google Fonts (L1-R4)
+
 ### Still Open
 1. **Leaked Password Protection** — unavailable on current Supabase plan
-2. **Security headers** — will take effect after next `git push` + Railway deploy (needs `npm install` for `serve`)
-3. **MFA initplan warnings** — inherent to MFA check pattern, no further optimization available
+2. **MFA initplan warnings** — now using SECURITY DEFINER function, may resolve some warnings
+3. **navigator.locks bypass** — cross-tab session coordination disabled; acceptable for single-tab CRM

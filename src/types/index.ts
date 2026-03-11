@@ -129,6 +129,25 @@ export interface FunnelStage {
   contactCount: number
 }
 
+export interface ScheduledReminder {
+  id: string
+  eventId: string
+  contactId: string
+  dealId?: string
+  sendAt: Date
+  channel: 'email' | 'sms'
+  recipientType: 'contact' | 'staff'
+  recipientEmail?: string
+  recipientName?: string
+  templateKey: string
+  templateVars: Record<string, string>
+  status: 'pending' | 'sent' | 'failed' | 'cancelled' | 'skipped'
+  errorMessage?: string
+  sentAt?: Date
+  communicationId?: string
+  createdAt: Date
+}
+
 export interface Campaign {
   id: string
   name: string

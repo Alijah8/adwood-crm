@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Header } from '../components/layout/Header'
 import { Card, CardContent } from '../components/ui/card'
 import { Button } from '../components/ui/button'
+import { Badge } from '../components/ui/badge'
 import { Input } from '../components/ui/input'
 import { useCRMStore } from '../store'
 import { cn } from '../lib/utils'
@@ -14,6 +15,9 @@ import {
   Phone,
   Users,
   Clock,
+  Mail,
+  Pencil,
+  LinkIcon,
 } from 'lucide-react'
 import {
   format,
@@ -35,11 +39,36 @@ const eventTypeConfig = {
   reminder: { icon: Clock, color: 'bg-purple-500' },
 }
 
+const TEMPLATE_LABELS: Record<string, string> = {
+  booking_confirm_email: 'Booking confirmation',
+  booking_confirm_sms: 'Booking confirmation (SMS)',
+  booking_staff_notify_email: 'Staff notification',
+  booking_staff_notify_sms: 'Staff notification (SMS)',
+  reminder_48h_email: '48h reminder',
+  reminder_48h_sms: '48h reminder (SMS)',
+  reminder_24h_email: '24h reminder',
+  reminder_24h_sms: '24h reminder (SMS)',
+  reminder_6h_email: '6h reminder',
+  reminder_6h_sms: '6h reminder (SMS)',
+  reminder_1h_email: '1h reminder',
+  reminder_1h_sms: '1h reminder (SMS)',
+  reminder_1h_staff_email: '1h staff reminder',
+}
+
+const statusColors: Record<string, string> = {
+  pending: 'secondary',
+  sent: 'success',
+  failed: 'destructive',
+  cancelled: 'secondary',
+  skipped: 'secondary',
+}
+
 export function Calendar() {
-  const { events, contacts, addEvent, deleteEvent } = useCRMStore()
+  const { events, contacts, deals, reminders, addEvent, updateEvent, deleteEvent } = useCRMStore()
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -81,17 +110,27 @@ export function Calendar() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    addEvent({
-      ...formData,
-      startTime: new Date(formData.startTime),
-      endTime: new Date(formData.endTime),
-      contactId: formData.contactId || undefined,
-    })
+    if (editingEventId) {
+      updateEvent(editingEventId, {
+        ...formData,
+        startTime: new Date(formData.startTime),
+        endTime: new Date(formData.endTime),
+        contactId: formData.contactId || undefined,
+      })
+    } else {
+      addEvent({
+        ...formData,
+        startTime: new Date(formData.startTime),
+        endTime: new Date(formData.endTime),
+        contactId: formData.contactId || undefined,
+      })
+    }
     resetForm()
   }
 
   const resetForm = () => {
     setShowForm(false)
+    setEditingEventId(null)
     setFormData({
       title: '',
       description: '',
@@ -115,7 +154,33 @@ export function Calendar() {
         endTime: endStr,
       })
     }
+    setEditingEventId(null)
     setShowForm(true)
+  }
+
+  const handleEditEvent = (event: CalendarEvent) => {
+    setEditingEventId(event.id)
+    setFormData({
+      title: event.title,
+      description: event.description || '',
+      type: event.type,
+      startTime: format(new Date(event.startTime), "yyyy-MM-dd'T'HH:mm"),
+      endTime: format(new Date(event.endTime), "yyyy-MM-dd'T'HH:mm"),
+      allDay: event.allDay,
+      contactId: event.contactId || '',
+      location: event.location || '',
+      videoLink: event.videoLink || '',
+    })
+    setShowForm(true)
+  }
+
+  const getEventReminders = (eventId: string) => {
+    return reminders.filter((r) => r.eventId === eventId)
+  }
+
+  const getEventDeal = (event: CalendarEvent) => {
+    if (!event.dealId) return null
+    return deals.find((d) => d.id === event.dealId) ?? null
   }
 
   return (
@@ -229,6 +294,9 @@ export function Calendar() {
                   {selectedDateEvents.map((event) => {
                     const config = eventTypeConfig[event.type]
                     const Icon = config.icon
+                    const eventReminders = getEventReminders(event.id)
+                    const eventDeal = getEventDeal(event)
+                    const emailReminders = eventReminders.filter((r) => r.channel === 'email')
                     return (
                       <div
                         key={event.id}
@@ -255,16 +323,53 @@ export function Calendar() {
                                 Join video call
                               </a>
                             )}
+                            {eventDeal && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                                <LinkIcon className="w-3 h-3" />
+                                Deal: {eventDeal.title}
+                              </p>
+                            )}
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => deleteEvent(event.id)}
-                          >
-                            <X className="w-3 h-3" />
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => handleEditEvent(event)}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => deleteEvent(event.id)}
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
                         </div>
+
+                        {/* Reminder status list */}
+                        {emailReminders.length > 0 && (
+                          <div className="mt-3 pt-2 border-t border-border space-y-1.5">
+                            <p className="text-xs font-medium text-muted-foreground">Reminders</p>
+                            {emailReminders.map((r) => (
+                              <div key={r.id} className="flex items-center gap-2 text-xs">
+                                <Mail className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                                <span className="flex-1 truncate">
+                                  {TEMPLATE_LABELS[r.templateKey] || r.templateKey}
+                                </span>
+                                <Badge
+                                  variant={statusColors[r.status] as 'success' | 'destructive' | 'secondary'}
+                                  className="text-[10px] px-1.5 py-0"
+                                >
+                                  {r.status}
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -283,12 +388,14 @@ export function Calendar() {
         </Card>
       </div>
 
-      {/* Add Event Modal */}
+      {/* Add/Edit Event Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <Card className="w-full max-w-lg max-h-[90vh] overflow-auto">
             <div className="flex items-center justify-between p-6 border-b border-border">
-              <h2 className="text-lg font-semibold">Add Event</h2>
+              <h2 className="text-lg font-semibold">
+                {editingEventId ? 'Edit Event' : 'Add Event'}
+              </h2>
               <Button variant="ghost" size="icon" onClick={resetForm}>
                 <X className="w-4 h-4" />
               </Button>
@@ -373,7 +480,9 @@ export function Calendar() {
                 <Button type="button" variant="outline" onClick={resetForm}>
                   Cancel
                 </Button>
-                <Button type="submit">Add Event</Button>
+                <Button type="submit">
+                  {editingEventId ? 'Save Changes' : 'Add Event'}
+                </Button>
               </div>
             </form>
           </Card>

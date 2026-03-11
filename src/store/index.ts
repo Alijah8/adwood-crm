@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Contact, Deal, Task, CalendarEvent, Communication, Staff, Payment, Campaign } from '../types'
+import type { Contact, Deal, Task, CalendarEvent, Communication, Staff, Payment, Campaign, ScheduledReminder } from '../types'
 import { generateId } from '../lib/utils'
 import { supabase } from '../lib/supabase'
 
@@ -183,6 +183,24 @@ function fromDbCampaign(r: Record<string, unknown>): Campaign {
   }
 }
 
+function fromDbReminder(r: Record<string, unknown>): ScheduledReminder {
+  return {
+    id: r.id as string, eventId: r.event_id as string, contactId: r.contact_id as string,
+    dealId: (r.deal_id as string) ?? undefined,
+    sendAt: new Date(r.send_at as string), channel: r.channel as ScheduledReminder['channel'],
+    recipientType: r.recipient_type as ScheduledReminder['recipientType'],
+    recipientEmail: (r.recipient_email as string) ?? undefined,
+    recipientName: (r.recipient_name as string) ?? undefined,
+    templateKey: r.template_key as string,
+    templateVars: (r.template_vars as Record<string, string>) ?? {},
+    status: r.status as ScheduledReminder['status'],
+    errorMessage: (r.error_message as string) ?? undefined,
+    sentAt: r.sent_at ? new Date(r.sent_at as string) : undefined,
+    communicationId: (r.communication_id as string) ?? undefined,
+    createdAt: new Date(r.created_at as string),
+  }
+}
+
 // --- Generic Supabase partial-update builder ---
 
 const CONTACT_FIELD_MAP: Record<string, string> = {
@@ -243,6 +261,7 @@ function buildDbUpdate(data: Record<string, unknown>, fieldMap: Record<string, s
 interface CRMStore {
   contacts: Contact[]; deals: Deal[]; tasks: Task[]; events: CalendarEvent[]
   communications: Communication[]; staff: Staff[]; payments: Payment[]; campaigns: Campaign[]
+  reminders: ScheduledReminder[]
   sidebarOpen: boolean; darkMode: boolean
 
   addContact: (contact: Omit<Contact, 'id' | 'createdAt' | 'updatedAt'>) => void
@@ -272,6 +291,8 @@ interface CRMStore {
   addCampaign: (campaign: Omit<Campaign, 'id' | 'createdAt' | 'updatedAt'>) => void
   updateCampaign: (id: string, data: Partial<Campaign>) => void
 
+  fetchReminders: (eventId?: string) => Promise<void>
+
   toggleSidebar: () => void
   toggleDarkMode: () => void
 
@@ -288,6 +309,7 @@ export const useCRMStore = create<CRMStore>()(
       // All data loaded from Supabase via fetchAll
       contacts: [], deals: [], tasks: [], events: [],
       communications: [], staff: [], payments: [], campaigns: [],
+      reminders: [],
 
       sidebarOpen: true,
       darkMode: false,
@@ -499,6 +521,16 @@ export const useCRMStore = create<CRMStore>()(
         set((s) => ({ campaigns: s.campaigns.map((c) => c.id === id ? merged : c) }))
       },
 
+      // --- Reminders (read-only, populated by DB triggers) ---
+
+      fetchReminders: async (eventId?: string) => {
+        let query = supabase.from('scheduled_reminders').select('*').order('send_at', { ascending: true })
+        if (eventId) query = query.eq('event_id', eventId)
+        const { data, error } = await query
+        if (error) { console.error('Supabase fetch reminders:', error); return }
+        set({ reminders: data?.map(fromDbReminder) ?? [] })
+      },
+
       // --- UI ---
 
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -531,13 +563,13 @@ export const useCRMStore = create<CRMStore>()(
           supabase.from('payments').update({ deleted_at: now }).is('deleted_at', null),
           supabase.from('campaigns').update({ deleted_at: now }).is('deleted_at', null),
         ])
-        set({ contacts: [], deals: [], tasks: [], events: [], communications: [], payments: [], campaigns: [], staff: [] })
+        set({ contacts: [], deals: [], tasks: [], events: [], communications: [], payments: [], campaigns: [], staff: [], reminders: [] })
       },
 
       // --- Supabase fetch all ---
 
       fetchAll: async () => {
-        const [contacts, deals, tasks, events, comms, staffRows, payments, campaigns] = await Promise.all([
+        const [contacts, deals, tasks, events, comms, staffRows, payments, campaigns, reminders] = await Promise.all([
           supabase.from('contacts').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
           supabase.from('deals').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
           supabase.from('tasks').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
@@ -546,6 +578,7 @@ export const useCRMStore = create<CRMStore>()(
           supabase.from('staff').select('*').is('deleted_at', null).order('created_at', { ascending: true }),
           supabase.from('payments').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
           supabase.from('campaigns').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+          supabase.from('scheduled_reminders').select('*').order('send_at', { ascending: true }),
         ])
         set({
           contacts: contacts.data?.map(fromDbContact) ?? [],
@@ -556,6 +589,7 @@ export const useCRMStore = create<CRMStore>()(
           staff: staffRows.data?.map(fromDbStaff) ?? [],
           payments: payments.data?.map(fromDbPayment) ?? [],
           campaigns: campaigns.data?.map(fromDbCampaign) ?? [],
+          reminders: reminders.data?.map(fromDbReminder) ?? [],
         })
       },
     }),
