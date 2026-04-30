@@ -99,8 +99,26 @@ serve(async (req) => {
     .update(updatePayload)
     .eq("stripe_session_id", session_id)
 
+  let confirmationEmailSent = false
+  if (meetings.length === 9) {
+    try {
+      const confirmResp = await fetch(`${SUPABASE_URL}/functions/v1/send-onboarding-confirmation`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ session_id }),
+      })
+      const confirmData = await confirmResp.json()
+      confirmationEmailSent = !!confirmData.success
+    } catch (_e) {
+      // Swallow: booking succeeded, email is best-effort. Failure is logged in function logs.
+    }
+  }
+
   return new Response(
-    JSON.stringify({ event_id: event.id, success: true }),
+    JSON.stringify({ event_id: event.id, success: true, confirmation_email_sent: confirmationEmailSent }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
   )
 })
