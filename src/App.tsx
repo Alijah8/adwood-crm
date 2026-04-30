@@ -15,6 +15,7 @@ import { Payments } from './pages/Payments'
 import { Reports } from './pages/Reports'
 import { Staff } from './pages/Staff'
 import { Settings } from './pages/Settings'
+import { Onboarding } from './pages/Onboarding'
 import './index.css'
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/mfa-verify" element={<MFAVerify />} />
+          <Route path="/onboarding" element={<Onboarding />} />
 
           {/* Protected CRM routes */}
           <Route
