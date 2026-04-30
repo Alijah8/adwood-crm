@@ -3,6 +3,7 @@ import { format, parseISO } from 'date-fns'
 import { cn } from '../../lib/utils'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 interface TimeSlotPickerProps {
   startDate: string
@@ -25,7 +26,10 @@ export function TimeSlotPicker({ startDate, endDate, selectedSlot, onSelect }: T
     setLoading(true)
     const res = await fetch(`${SUPABASE_URL}/functions/v1/get-availability`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
       body: JSON.stringify({ start_date: startDate, end_date: fetchEndDate }),
     })
     const data = await res.json()
